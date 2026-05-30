@@ -15,7 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $full_name = $_POST['full_name'] ?? '';
     $phone = $_POST['phone'] ?? ''; 
     $password = $_POST['password'] ?? '';
-    $profile_image_url = $_POST['profile_image_url'] ?? '';
+    $profile_image_url = $_POST['profile_image_url'] ?? 'https://res.cloudinary.com/dmae5wpe9/image/upload/v1780127792/esi53lgjgdwvr9jcbno4.png';
 
     if (empty($full_name) || empty($phone) || empty($password)) {
         echo json_encode(['status' => 'error', 'message' => 'All fields are required.']);
