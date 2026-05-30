@@ -12,38 +12,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $full_name = $_POST['full_name'] ?? '';
-    $phone = $_POST['phone'] ?? ''; 
+    $full_name = trim($_POST['full_name'] ?? '');
+    $phone = trim($_POST['phone'] ?? ''); 
     $password = $_POST['password'] ?? '';
-    $profile_image_url = $_POST['profile_image_url'] ?? 'https://res.cloudinary.com/dmae5wpe9/image/upload/v1780127792/esi53lgjgdwvr9jcbno4.png';
+    $defaultProfile = 'https://res.cloudinary.com/dmae5wpe9/image/upload/v1780127792/esi53lgjgdwvr9jcbno4.png';
 
-    if (empty($full_name) || empty($phone) || empty($password)) {
+    $rawProfile = trim($_POST['profile_image_url'] ?? '');
+    $profile_image_url = $rawProfile !== '' ? $rawProfile : $defaultProfile;
+
+    if ($full_name === '' || $phone === '' || $password === '') {
         echo json_encode(['status' => 'error', 'message' => 'All fields are required.']);
         exit;
     }
 
-    $chksql = "SELECT id FROM users WHERE phone_number = ?";
+    $chksql = "SELECT id FROM users WHERE phone_number = ? LIMIT 1";
     $chkstmt = mysqli_prepare($conn, $chksql);
+    if (!$chkstmt) {
+        echo json_encode(['status' => 'error', 'message' => 'Database prepare failed: ' . mysqli_error($conn)]);
+        exit;
+    }
     mysqli_stmt_bind_param($chkstmt, "s", $phone);
     mysqli_stmt_execute($chkstmt);
     $result = mysqli_stmt_get_result($chkstmt);
     
-    if (mysqli_num_rows($result) > 0) {
+    if ($result && mysqli_num_rows($result) > 0) {
         echo json_encode(['status' => 'error', 'message' => 'An account with this phone number already exists.']);   
+        mysqli_stmt_close($chkstmt);
         exit;
     }
     mysqli_stmt_close($chkstmt);
 
     $password_hash = password_hash($password, PASSWORD_BCRYPT);
     $role = 'customer';
-    $shift_schedule = null;
+    $shift_schedule = '';
 
     $sql = "INSERT INTO users (full_name, phone_number, password, role, profile_image_url, shift_schedule) VALUES (?, ?, ?, ?, ?, ?)";
     $stmt = mysqli_prepare($conn, $sql);
+    if (!$stmt) {
+        echo json_encode(['status' => 'error', 'message' => 'Database prepare failed: ' . mysqli_error($conn)]);
+        exit;
+    }
     mysqli_stmt_bind_param($stmt, "ssssss", $full_name, $phone, $password_hash, $role, $profile_image_url, $shift_schedule);
 
     if (mysqli_stmt_execute($stmt)) {
-        echo json_encode(['status' => 'success', 'message' => 'Account registered successfully.']);
+        $newId = mysqli_insert_id($conn);
+        $user = [
+            'id' => $newId,
+            'full_name' => $full_name,
+            'role' => $role,
+            'profile_image_url' => $profile_image_url,
+            'shift_schedule' => $shift_schedule,
+        ];
+        echo json_encode(['status' => 'success', 'message' => 'Account registered successfully.', 'user' => $user]);
     } else {
         echo json_encode(['status' => 'error', 'message' => mysqli_error($conn)]);
     }
