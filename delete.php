@@ -22,7 +22,50 @@ if (!$conn) {
     exit;
 }
 
-// Support JSON payload for DELETE and POST bodies
+$cloudinaryCloudName = getenv('CLOUDINARY_CLOUD_NAME') ?: 'hotel_cloud';
+$cloudinaryApiKey = getenv('CLOUDINARY_API_KEY') ?: '';
+$cloudinaryApiSecret = getenv('CLOUDINARY_API_SECRET') ?: '';
+
+function getCloudinaryPublicId($url) {
+    $parsedPath = parse_url($url, PHP_URL_PATH);
+    if (!$parsedPath) {
+        return null;
+    }
+
+    if (preg_match('#/upload/(?:v\d+/)?(.+)$#', $parsedPath, $matches)) {
+        $publicId = $matches[1];
+        $publicId = preg_replace('/\.[^\.]+$/', '', $publicId);
+        return $publicId;
+    }
+
+    return null;
+}
+
+function destroyCloudinaryImage($cloudName, $apiKey, $apiSecret, $publicId) {
+    if (empty($cloudName) || empty($apiKey) || empty($apiSecret) || empty($publicId)) {
+        return false;
+    }
+
+    $url = "https://api.cloudinary.com/v1_1/{$cloudName}/image/destroy";
+    $payload = http_build_query([
+        'public_id' => $publicId,
+        'invalidate' => 'true',
+    ]);
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+    curl_setopt($ch, CURLOPT_USERPWD, "{$apiKey}:{$apiSecret}");
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/x-www-form-urlencoded']);
+
+    $response = curl_exec($ch);
+    $statusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    return $statusCode === 200;
+}
+
 $body = json_decode(file_get_contents('php://input'), true);
 $id = $_POST['id'] ?? $body['id'] ?? null;
 $product_name = $_POST['product_name'] ?? $body['product_name'] ?? null;
@@ -93,9 +136,9 @@ if (!mysqli_stmt_execute($stmt)) {
 mysqli_stmt_close($stmt);
 
 if (!empty($product['product_path'])) {
-    $filePath = __DIR__ . '/../public/uploads/products/' . basename($product['product_path']);
-    if (file_exists($filePath)) {
-        @unlink($filePath);
+    $publicId = getCloudinaryPublicId($product['product_path']);
+    if ($publicId && $cloudinaryApiKey && $cloudinaryApiSecret) {
+        destroyCloudinaryImage($cloudinaryCloudName, $cloudinaryApiKey, $cloudinaryApiSecret, $publicId);
     }
 }
 
