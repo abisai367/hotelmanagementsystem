@@ -58,20 +58,30 @@ $stmt = $conn->prepare("
     INSERT INTO orders (order_id, phone, amount, items, status, created_at)
     VALUES (?, ?, ?, ?, ?, NOW())
 ");
-$stmt->bind_param("sssss", $order_id, $phone, $amount, $items_json, $status);
-$stmt->execute();
+$stmt->bind_param("sdsss", $order_id, $amount, $phone, $items_json, $status);
+if (!$stmt->execute()) {
+    echo json_encode(["status" => "error", "message" => "Failed to save order"]);
+    exit;
+}
 $stmt->close();
 
 /* =========================
    MPESA CREDENTIALS
 ========================= */
-$consumerKey    = "YOUR_CONSUMER_KEY";
-$consumerSecret = "YOUR_CONSUMER_SECRET";
-$BusinessShortCode = "174379";
-$Passkey = "YOUR_PASSKEY";
+// Get from M-Pesa Developer Console (https://developer.safaricom.co.ke)
+$consumerKey    = getenv('MPESA_CONSUMER_KEY') ?: "YOUR_CONSUMER_KEY_HERE";
+$consumerSecret = getenv('MPESA_CONSUMER_SECRET') ?: "YOUR_CONSUMER_SECRET_HERE";
+$BusinessShortCode = getenv('MPESA_BUSINESS_CODE') ?: "174379"; // Test: 174379
+$Passkey = getenv('MPESA_PASSKEY') ?: "YOUR_PASSKEY_HERE";
 
-/* IMPORTANT: MUST BE PUBLIC HTTPS URL */
-$callbackUrl = "https://yourdomain.com/api/callback.php";
+/* IMPORTANT: MUST BE PUBLIC HTTPS URL - Test env or production */
+$callbackUrl = getenv('MPESA_CALLBACK_URL') ?: "https://fivestarhotel.rf.gd/api/callback.php";
+
+// Validate credentials are set
+if (strpos($consumerKey, 'YOUR_') !== false || empty($consumerKey)) {
+    echo json_encode(["status" => "error", "message" => "M-Pesa credentials not configured. Contact admin."]);
+    exit;
+}
 
 /* =========================
    GET ACCESS TOKEN
@@ -95,7 +105,11 @@ $json = json_decode($result);
 curl_close($ch);
 
 if (!isset($json->access_token)) {
-    echo json_encode(["status" => "error", "message" => "Failed to get access token"]);
+    echo json_encode([
+        "status" => "error",
+        "message" => "Failed to get M-Pesa access token. Check credentials.",
+        "debug" => $json
+    ]);
     exit;
 }
 
@@ -134,13 +148,15 @@ curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 
 $response = curl_exec($ch);
+$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
 if (!$response) {
-    echo json_encode(["status" => "error", "message" => curl_error($ch)]);
+    echo json_encode(["status" => "error", "message" => "STK push request failed: " . curl_error($ch)]);
     exit;
 }
 
-file_put_contents("stk_debug.json", $response);
+// Log response for debugging
+file_put_contents("stk_debug.json", "[" . date('Y-m-d H:i:s') . "] HTTP $httpCode\n" . $response . "\n\n", FILE_APPEND);
 
 $resp = json_decode($response);
 curl_close($ch);
@@ -169,10 +185,11 @@ if (isset($resp->ResponseCode) && $resp->ResponseCode == "0") {
     ]);
 
 } else {
+    $errorMsg = $resp->errorMessage ?? $resp->ResponseDescription ?? "Unknown error";
     echo json_encode([
         "status" => "failed",
-        "message" => "STK Push failed",
-        "response" => $resp
+        "message" => "STK Push failed: $errorMsg",
+        "errorCode" => $resp->errorCode ?? $resp->ResponseCode ?? null
     ]);
 }
 
