@@ -23,7 +23,9 @@ $sql = "SELECT DISTINCT u.id, u.phone_number, u.profile_image_url,
         COALESCE((SELECT encrypted_text FROM messages WHERE (sender_id = ? AND receiver_id = u.id) OR (sender_id = u.id AND receiver_id = ?) ORDER BY id DESC LIMIT 1), '') AS last_message,
         COALESCE((SELECT iv_params FROM messages WHERE (sender_id = ? AND receiver_id = u.id) OR (sender_id = u.id AND receiver_id = ?) ORDER BY id DESC LIMIT 1), '') AS last_iv,
         (SELECT created_at FROM messages WHERE (sender_id = ? AND receiver_id = u.id) OR (sender_id = u.id AND receiver_id = ?) ORDER BY id DESC LIMIT 1) AS last_time,
-        COALESCE((SELECT sender_id FROM messages WHERE (sender_id = ? AND receiver_id = u.id) OR (sender_id = u.id AND receiver_id = ?) ORDER BY id DESC LIMIT 1), NULL) AS last_sender_id
+        COALESCE((SELECT sender_id FROM messages WHERE (sender_id = ? AND receiver_id = u.id) OR (sender_id = u.id AND receiver_id = ?) ORDER BY id DESC LIMIT 1), NULL) AS last_sender_id,
+        COALESCE((SELECT COUNT(*) FROM messages WHERE sender_id = u.id AND receiver_id = ? AND is_read = 0), 0) AS unread_count,
+        COALESCE((SELECT 1 FROM contacts WHERE user_id = ? AND contact_user_id = u.id LIMIT 1), 0) AS is_saved
         FROM users u
         WHERE u.id IN (
             SELECT contact_user_id FROM contacts WHERE user_id = ?
@@ -31,10 +33,11 @@ $sql = "SELECT DISTINCT u.id, u.phone_number, u.profile_image_url,
             SELECT DISTINCT receiver_id FROM messages WHERE sender_id = ?
             UNION
             SELECT DISTINCT sender_id FROM messages WHERE receiver_id = ?
-        ) AND u.id != ?";
+        ) AND u.id != ?
+        ORDER BY last_time DESC";
 
 $stmt = mysqli_prepare($conn, $sql);
-mysqli_stmt_bind_param($stmt, "iiiiiiiiiiiii", $user_id, $user_id, $user_id, $user_id, $user_id, $user_id, $user_id, $user_id, $user_id, $user_id, $user_id, $user_id, $user_id);
+mysqli_stmt_bind_param($stmt, "iiiiiiiiiiiiiii", $user_id, $user_id, $user_id, $user_id, $user_id, $user_id, $user_id, $user_id, $user_id, $user_id, $user_id, $user_id, $user_id, $user_id, $user_id);
 mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 
