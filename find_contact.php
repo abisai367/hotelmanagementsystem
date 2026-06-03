@@ -54,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         mysqli_stmt_close($contact_stmt);
     } else {
-        // Precise requested fallback mismatch message alert string
+        
         echo json_encode(['status' => 'not_found', 'message' => 'The phone number you entered is not in Five Star Hotel (User not yet joined Five Star Hotel).']);
     }
     mysqli_stmt_close($user_stmt);

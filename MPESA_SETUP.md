@@ -94,9 +94,3 @@ $callbackUrl = "https://fivestarhotel.rf.gd/api/callback.php";
 - [ ] Implement payment verification in callback
 - [ ] Secure all API keys (use environment variables)
 
-
-
-
-
-
-auto scroll effect is still there,,,,,,,,,,,,,,,,,,,,,small devices still cant see the titles or use navigation at the top and another thing small devices cant scroll through the navigation in the sidebar hey please make this posssible (SMALL DEVICES NEED TO SEE THE FOOTER ALSO AND THEY NEED TO SEE THE HEADINGS AND USE THE NAVIGATION THERE PLEASE DO THE TESTS BEFORE ACERTAING THAT IT IS NOW FUNCTIONAL ALL MY USERS ARE ON SMALLL DEVICES HELP AND ALSO CONSIDER THE WHOLE APP CSS MAKE IT FULLLY RESPONSIVE TO ALL DEVICES)
