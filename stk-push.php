@@ -1,13 +1,26 @@
 <?php
 header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
 header("Content-Type: application/json");
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
+
 require_once __DIR__ . '/../vendor/autoload.php';
 include 'database.php';
 
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../');
+// Load .env.production first if present, otherwise fall back to .env.
+$dotenvPath = __DIR__ . '/../';
+$dotenvFiles = ['.env.production', '.env'];
+if (file_exists($dotenvPath . '/.env.production')) {
+    $dotenvFiles = ['.env.production'];
+}
+$dotenv = Dotenv\Dotenv::createImmutable($dotenvPath, $dotenvFiles);
 $dotenv->load();
 
-// Get JSON input
 $inputData = file_get_contents("php://input");
 $data = json_decode($inputData, true);
 
@@ -16,6 +29,7 @@ if (!$data) {
     echo json_encode(["status" => "error", "message" => "Invalid JSON input"]);
     exit;
 }
+
 
 $phone = $data['phone'] ?? null;
 $amount = $data['amount'] ?? null;
@@ -27,7 +41,6 @@ $pickupTime = $data['pickupTime'] ?? null;
 $deliveryAddress = $data['deliveryAddress'] ?? null;
 $contactNumber = $data['contactNumber'] ?? null;
 
-// Validate required fields
 if (!$phone || !$amount || !$customerId) {
     http_response_code(400);
     echo json_encode(["status" => "error", "message" => "Missing required fields: phone, amount, customerId"]);
@@ -90,15 +103,12 @@ if ($orderType === 'dineIn') {
     $contactNumber = null;
     $pickupTime = null;
 }
-
-// Validate phone format (should be 254XXXXXXXX)
 if (!preg_match('/^254\d{9}$/', $phone)) {
     http_response_code(400);
     echo json_encode(["status" => "error", "message" => "Invalid phone format. Use 254XXXXXXXX"]);
     exit;
 }
 
-// Validate amount
 if ($amount < 1) {
     http_response_code(400);
     echo json_encode(["status" => "error", "message" => "Amount must be at least 1 KES"]);
@@ -106,11 +116,11 @@ if ($amount < 1) {
 }
 
 try {
-    $consumerKey = $_ENV['MPESA_CONSUMER_KEY'] ?? null;
-    $consumerSecret = $_ENV['MPESA_CONSUMER_SECRET'] ?? null;
-    $businessCode = $_ENV['MPESA_BUSINESS_CODE'] ?? null;
-    $passkey = $_ENV['MPESA_PASSKEY'] ?? null;
-    $callbackUrl = $_ENV['MPESA_CALLBACK_URL'] ?? null;
+    $consumerKey = $_ENV['MPESA_CONSUMER_KEY'] ?? getenv('MPESA_CONSUMER_KEY');
+    $consumerSecret = $_ENV['MPESA_CONSUMER_SECRET'] ?? getenv('MPESA_CONSUMER_SECRET');
+    $businessCode = $_ENV['MPESA_BUSINESS_CODE'] ?? getenv('MPESA_BUSINESS_CODE');
+    $passkey = $_ENV['MPESA_PASSKEY'] ?? getenv('MPESA_PASSKEY');
+    $callbackUrl = $_ENV['MPESA_CALLBACK_URL'] ?? getenv('MPESA_CALLBACK_URL');
 
     if (!$consumerKey || !$consumerSecret || !$businessCode || !$passkey || !$callbackUrl) {
         throw new Exception("M-Pesa credentials not properly configured in .env.production");
