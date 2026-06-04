@@ -9,19 +9,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-require_once __DIR__ . '/../vendor/autoload.php';
 include 'database.php';
 
 // Load .env.production first if present, otherwise fall back to .env.
 $dotenvPath = __DIR__ . '/../';
 $dotenvFiles = ['.env.production', '.env'];
-if (file_exists($dotenvPath . '/.env.production')) {
-    $dotenvFiles = ['.env.production'];
+$dotenvToLoad = null;
+foreach ($dotenvFiles as $filename) {
+    if (file_exists($dotenvPath . $filename)) {
+        $dotenvToLoad = $filename;
+        break;
+    }
 }
-$dotenv = Dotenv\Dotenv::createImmutable($dotenvPath, $dotenvFiles);
-$dotenv->load();
+
+if ($dotenvToLoad) {
+    if (file_exists($dotenvPath . 'vendor/autoload.php')) {
+        require_once $dotenvPath . 'vendor/autoload.php';
+    }
+    if (class_exists('Dotenv\\Dotenv')) {
+        $dotenv = Dotenv\Dotenv::createImmutable($dotenvPath, [$dotenvToLoad]);
+        $dotenv->safeLoad();
+    } else {
+        loadEnvFile($dotenvPath . $dotenvToLoad);
+    }
+}
 
 $inputData = file_get_contents("php://input");
+
+function loadEnvFile(string $path): void {
+    if (!is_readable($path)) {
+        return;
+    }
+    $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if ($line === '' || str_starts_with($line, '#')) {
+            continue;
+        }
+        if (!preg_match('/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/', $line, $matches)) {
+            continue;
+        }
+        $name = $matches[1];
+        $value = $matches[2];
+        if ((str_starts_with($value, '"') && str_ends_with($value, '"')) || (str_starts_with($value, "'") && str_ends_with($value, "'"))) {
+            $value = substr($value, 1, -1);
+        }
+        if (getenv($name) === false) {
+            putenv("{$name}={$value}");
+            $_ENV[$name] = $value;
+            $_SERVER[$name] = $value;
+        }
+    }
+}
+
 $data = json_decode($inputData, true);
 
 if (!$data) {
@@ -191,13 +231,11 @@ try {
     $stkData = json_decode($stkResponse, true);
 
     if ($stkHttpCode === 200 && isset($stkData['CheckoutRequestID'])) {
-        $accountRef = 'Order-' . time();
-        
-        $insertStmt = $conn->prepare(
-            "INSERT INTO orders (customer_id, amount, phone_number, order_type, table_number, pickup_time, delivery_address, contact_number, checkout_request_id, payment_status, created_at) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', NOW())"
-        );
-        
+            $insertStmt = $conn->prepare(
+                "INSERT INTO orders (customer_id, amount, phone_number, order_type, table_number, pickup_time, delivery_address, contact_number, payment_status, created_at) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending', NOW())"
+            );
+
         $insertStmt->bind_param(
             "isssssss",
             $customerId,
