@@ -180,13 +180,17 @@ try {
     $tokenHttpCode = curl_getinfo($tokenCurl, CURLINFO_HTTP_CODE);
     curl_close($tokenCurl);
 
+    logDebug('MpesaDebug.log', "TOKEN_RESPONSE CODE={$tokenHttpCode} BODY={$tokenResponse}");
+
     if ($tokenHttpCode !== 200) {
-        throw new Exception("Failed to get access token: HTTP $tokenHttpCode");
+        $errorData = json_decode($tokenResponse, true);
+        $errorMessage = $errorData['errorMessage'] ?? $tokenResponse;
+        throw new Exception("Failed to get access token: HTTP $tokenHttpCode - $errorMessage");
     }
 
     $tokenData = json_decode($tokenResponse, true);
     if (!isset($tokenData['access_token'])) {
-        throw new Exception("No access token in response");
+        throw new Exception("No access token in response: $tokenResponse");
     }
 
     $accessToken = $tokenData['access_token'];
@@ -227,6 +231,8 @@ try {
     $stkResponse = curl_exec($stkCurl);
     $stkHttpCode = curl_getinfo($stkCurl, CURLINFO_HTTP_CODE);
     curl_close($stkCurl);
+
+    logDebug('MpesaDebug.log', "STK_REQUEST URL={$stkUrl} PAYLOAD=" . json_encode($stkPayload) . " RESPONSE_CODE={$stkHttpCode} BODY={$stkResponse}");
 
     $stkData = json_decode($stkResponse, true);
 
@@ -293,4 +299,12 @@ try {
         "status" => "error",
         "message" => "Server error: " . $e->getMessage()
     ]);
+}
+
+function logDebug($filename, $data) {
+    $fp = fopen($filename, 'a');
+    if ($fp) {
+        fwrite($fp, "[" . date('Y-m-d H:i:s') . "] " . $data . "\n");
+        fclose($fp);
+    }
 }
