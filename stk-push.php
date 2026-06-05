@@ -237,43 +237,115 @@ try {
     $stkData = json_decode($stkResponse, true);
 
     if ($stkHttpCode === 200 && isset($stkData['CheckoutRequestID'])) {
+            // Try inserting order including amount; if the orders table doesn't have an 'amount' column,
+            // fall back to an insert without amount so the flow continues.
+            $orderId = 0;
             $insertStmt = $conn->prepare(
                 "INSERT INTO orders (customer_id, amount, phone_number, order_type, table_number, pickup_time, delivery_address, contact_number, payment_status, created_at) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending', NOW())"
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending', NOW())"
             );
 
-        $insertStmt->bind_param(
-            "isssssss",
-            $customerId,
-            $amount,
-            $phone,
-            $orderType,
-            $tableNumber,
-            $pickupTime,
-            $deliveryAddress,
-            $contactNumber
-        );
+            if ($insertStmt) {
+                $insertStmt->bind_param(
+                    "isssssss",
+                    $customerId,
+                    $amount,
+                    $phone,
+                    $orderType,
+                    $tableNumber,
+                    $pickupTime,
+                    $deliveryAddress,
+                    $contactNumber
+                );
 
-        if (!$insertStmt->execute()) {
-            throw new Exception("Database insert failed: " . $insertStmt->error);
-        }
-
-        $orderId = $conn->insert_id;
+                if (!$insertStmt->execute()) {
+                    $err = $insertStmt->error;
+                    // Unknown column (1054) or explicit message about 'amount' -> retry without amount
+                    if (strpos($err, "Unknown column 'amount'") !== false || mysqli_errno($conn) === 1054) {
+                        $insertStmt->close();
+                        $insertStmt = $conn->prepare(
+                            "INSERT INTO orders (customer_id, phone_number, order_type, table_number, pickup_time, delivery_address, contact_number, payment_status, created_at) 
+                             VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending', NOW())"
+                        );
+                        if (!$insertStmt) {
+                            throw new Exception('Database insert failed (fallback prepare): ' . $conn->error);
+                        }
+                        $insertStmt->bind_param(
+                            "issssss",
+                            $customerId,
+                            $phone,
+                            $orderType,
+                            $tableNumber,
+                            $pickupTime,
+                            $deliveryAddress,
+                            $contactNumber
+                        );
+                        if (!$insertStmt->execute()) {
+                            throw new Exception('Database insert failed (fallback): ' . $insertStmt->error);
+                        }
+                    } else {
+                        throw new Exception("Database insert failed: " . $err);
+                    }
+                }
+                $orderId = $conn->insert_id;
+            } else {
+                throw new Exception('Database insert failed (prepare): ' . $conn->error);
+            }
         
         $updateStmt = $conn->prepare("UPDATE orders SET checkout_request_id = ? WHERE order_id = ?");
         $updateStmt->bind_param("si", $stkData['CheckoutRequestID'], $orderId);
         $updateStmt->execute();
         
+        // For each item, try to merge into existing pending order with `Attended to` = 'No' for this customer
+        $newOrderHasItems = false;
         foreach ($items as $item) {
-            $itemInsertStmt = $conn->prepare(
-                "INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)"
-            );
             $productId = $item['product_id'] ?? 0;
             $quantity = $item['quantity'] ?? 1;
             $price = $item['price'] ?? 0;
-            
-            $itemInsertStmt->bind_param("iidi", $orderId, $productId, $quantity, $price);
-            $itemInsertStmt->execute();
+
+            $existingStmt = $conn->prepare(
+                "SELECT oi.id AS oi_id, oi.quantity AS qty, o.order_id AS existing_order_id FROM order_items oi JOIN orders o ON oi.order_id = o.order_id WHERE o.customer_id = ? AND oi.product_id = ? AND COALESCE(o.`Attended to`, 'No') = 'No' LIMIT 1"
+            );
+            if ($existingStmt) {
+                $existingStmt->bind_param('ii', $customerId, $productId);
+                $existingStmt->execute();
+                $res = $existingStmt->get_result();
+                $found = $res->fetch_assoc();
+                if ($found) {
+                    // Update the existing order item quantity
+                    $newQty = intval($found['qty']) + intval($quantity);
+                    $updateOi = $conn->prepare("UPDATE order_items SET quantity = ? WHERE id = ?");
+                    if ($updateOi) {
+                        $updateOi->bind_param('ii', $newQty, $found['oi_id']);
+                        $updateOi->execute();
+                        $updateOi->close();
+                    }
+                    $existingStmt->close();
+                    continue; // skip inserting into the newly created order
+                }
+                $existingStmt->close();
+            }
+
+            // Insert into the new order
+            $itemInsertStmt = $conn->prepare(
+                "INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)"
+            );
+            if ($itemInsertStmt) {
+                $itemInsertStmt->bind_param("iidi", $orderId, $productId, $quantity, $price);
+                $itemInsertStmt->execute();
+                $itemInsertStmt->close();
+                $newOrderHasItems = true;
+            }
+        }
+
+        // If the newly created order ended up with no items (because they were merged into existing orders), delete it to keep DB tidy
+        if (!$newOrderHasItems) {
+            $del = $conn->prepare("DELETE FROM orders WHERE order_id = ?");
+            if ($del) {
+                $del->bind_param('i', $orderId);
+                $del->execute();
+                $del->close();
+            }
         }
 
         http_response_code(200);
@@ -294,10 +366,12 @@ try {
     }
 
 } catch (Exception $e) {
+    // Log full exception details for server operators, but do not expose internal errors to clients
+    logDebug('MpesaDebug.log', "EXCEPTION: " . $e->getMessage() . " -- " . $e->getTraceAsString());
     http_response_code(500);
     echo json_encode([
         "status" => "error",
-        "message" => "Server error: " . $e->getMessage()
+        "message" => "Server error. Please try again or contact support."
     ]);
 }
 

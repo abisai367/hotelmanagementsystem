@@ -1,6 +1,4 @@
 <?php
-include "database.php"; 
-
 header("Content-Type: application/json");
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: Content-Type");
@@ -11,21 +9,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit();
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $full_name = $_POST['full_name'] ?? '';
-    $phone = $_POST['phone'] ?? '';
-    $password = $_POST['password'] ?? '';
-    $role = $_POST['role'] ?? '';
-    $shift_schedule = $_POST['shift_schedule'] ?? '';
-    $profile_image_url = $_POST['profile_image_url'] ?? '';
+$conn = null;
+include 'database.php';
+/** @var mysqli $conn */
+if (!isset($conn) || !$conn) { error_log('add_employee: missing DB connection'); http_response_code(500); echo json_encode(['status'=>'error','message'=>'Database connection unavailable']); exit; }
 
-    if (empty($full_name) || empty($phone) || empty($password) || empty($role) || empty($shift_schedule)) {
-        echo json_encode(['status' => 'error', 'message' => 'All fields are required.']);
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Accept both JSON and form POST
+    $input = null;
+    $content_type = $_SERVER['CONTENT_TYPE'] ?? '';
+    
+    if (strpos($content_type, 'application/json') !== false) {
+        $input = json_decode(file_get_contents('php://input'), true);
+    } else {
+        $input = $_POST;
+    }
+    
+    if (!$input) {
+        echo json_encode(['status' => 'error', 'message' => 'Invalid input']);
+        exit;
+    }
+    
+    $full_name = $input['full_name'] ?? '';
+    $phone = $input['phone'] ?? '';
+    $role = $input['role'] ?? 'Employee';
+    $shift_schedule = $input['shift_schedule'] ?? '';
+    $profile_image_url = $input['profile_image_url'] ?? '';
+    $password = $input['password'] ?? bin2hex(random_bytes(6)); // Default password if not provided
+
+    if (empty($full_name) || empty($phone)) {
+        echo json_encode(['status' => 'error', 'message' => 'Name and phone are required']);
         exit;
     }
 
     if ($role === 'customer' || $role === 'Customer') {
-        echo json_encode(['status' => 'error', 'message' => 'Cannot add a customer role through this endpoint.']);
+        echo json_encode(['status' => 'error', 'message' => 'Cannot add a customer role through this endpoint']);
         exit;
     }
 
@@ -36,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $result = mysqli_stmt_get_result($chkstmt);
     
     if (mysqli_num_rows($result) > 0) {
-        echo json_encode(['status' => 'error', 'message' => 'An account with this phone number already exists.']);   
+        echo json_encode(['status' => 'error', 'message' => 'Phone number already exists']);   
         exit;
     }
     mysqli_stmt_close($chkstmt);
@@ -45,15 +63,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $sql = "INSERT INTO users (full_name, phone, password_hash, role, profile_image_url, shift_schedule) VALUES (?, ?, ?, ?, ?, ?)";
     $stmt = mysqli_prepare($conn, $sql);
+    
+    if (!$stmt) {
+        error_log('add_employee prepare error: ' . $conn->error);
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Server error']);
+        exit;
+    }
+    
     mysqli_stmt_bind_param($stmt, "ssssss", $full_name, $phone, $password_hash, $role, $profile_image_url, $shift_schedule);
 
     if (mysqli_stmt_execute($stmt)) {
-        echo json_encode(['status' => 'success', 'message' => 'Employee registered successfully.']);
+        echo json_encode(['status' => 'success', 'message' => 'Employee added successfully']);
     } else {
-        echo json_encode(['status' => 'error', 'message' => mysqli_error($conn)]);
+        error_log('add_employee execute error: ' . $stmt->error);
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Failed to add employee']);
     }
     mysqli_stmt_close($stmt);
 }
 
 mysqli_close($conn);
 ?>
+

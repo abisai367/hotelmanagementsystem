@@ -1,6 +1,4 @@
 <?php
-include 'database.php';
-
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Access-Control-Allow-Methods: POST, DELETE, OPTIONS');
@@ -17,10 +15,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' && $_SERVER['REQUEST_METHOD'] !== 'DEL
     exit;
 }
 
-if (!$conn) {
-    echo json_encode(['status' => 'error', 'message' => 'Database connection failed']);
-    exit;
-}
+$conn = null;
+include 'database.php';
+/** @var mysqli $conn */
+if (!isset($conn) || !$conn) { error_log('delete: missing DB connection'); http_response_code(500); echo json_encode(['status'=>'error','message'=>'Database connection unavailable']); exit; }
 
 $cloudinaryCloudName = getenv('CLOUDINARY_CLOUD_NAME') ?: 'hotel_cloud';
 $cloudinaryApiKey = getenv('CLOUDINARY_API_KEY') ?: '';
@@ -96,7 +94,9 @@ if ($id) {
 
 $stmt = mysqli_prepare($conn, $selectSql);
 if (!$stmt) {
-    echo json_encode(['status' => 'error', 'message' => mysqli_error($conn)]);
+    error_log('delete.php select error: ' . $conn->error);
+    http_response_code(500);
+    echo json_encode(['status' => 'error', 'message' => 'Server error']);
     exit;
 }
 
@@ -122,13 +122,17 @@ if ($id) {
 
 $stmt = mysqli_prepare($conn, $deleteSql);
 if (!$stmt) {
-    echo json_encode(['status' => 'error', 'message' => mysqli_error($conn)]);
+    error_log('delete.php delete prepare error: ' . $conn->error);
+    http_response_code(500);
+    echo json_encode(['status' => 'error', 'message' => 'Server error']);
     exit;
 }
 
 mysqli_stmt_bind_param($stmt, $paramTypes, ...$params);
 if (!mysqli_stmt_execute($stmt)) {
-    echo json_encode(['status' => 'error', 'message' => mysqli_error($conn)]);
+    error_log('delete.php delete execute error: ' . $stmt->error);
+    http_response_code(500);
+    echo json_encode(['status' => 'error', 'message' => 'Server error']);
     mysqli_stmt_close($stmt);
     exit;
 }
