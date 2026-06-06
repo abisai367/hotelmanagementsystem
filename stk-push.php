@@ -165,6 +165,11 @@ try {
     if (!$consumerKey || !$consumerSecret || !$businessCode || !$passkey || !$callbackUrl) {
         throw new Exception("M-Pesa credentials not properly configured in .env.production");
     }
+
+    // Allow disabling SSL verification only when explicitly enabled via env var (for sandbox/testing).
+    // By default SSL verification is enabled.
+    $mpesaAllowInsecure = (isset($_ENV['MPESA_ALLOW_INSECURE']) ? $_ENV['MPESA_ALLOW_INSECURE'] : (getenv('MPESA_ALLOW_INSECURE') ?: 'false')) === 'true';
+    $mpesaVerifyPeer = $mpesaAllowInsecure ? false : true;
     $tokenUrl = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
     $credentials = base64_encode($consumerKey . ':' . $consumerSecret);
 
@@ -173,7 +178,7 @@ try {
     curl_setopt($tokenCurl, CURLOPT_HTTPHEADER, ['Authorization: Basic ' . $credentials]);
     curl_setopt($tokenCurl, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($tokenCurl, CURLOPT_HEADER, false);
-    curl_setopt($tokenCurl, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($tokenCurl, CURLOPT_SSL_VERIFYPEER, $mpesaVerifyPeer);
     curl_setopt($tokenCurl, CURLOPT_TIMEOUT, 30);
     
     $tokenResponse = curl_exec($tokenCurl);
@@ -225,7 +230,7 @@ try {
     curl_setopt($stkCurl, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($stkCurl, CURLOPT_POST, true);
     curl_setopt($stkCurl, CURLOPT_POSTFIELDS, $dataString);
-    curl_setopt($stkCurl, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($stkCurl, CURLOPT_SSL_VERIFYPEER, $mpesaVerifyPeer);
     curl_setopt($stkCurl, CURLOPT_TIMEOUT, 30);
 
     $stkResponse = curl_exec($stkCurl);

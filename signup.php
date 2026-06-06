@@ -28,7 +28,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $chksql = "SELECT id FROM users WHERE phone_number = ? LIMIT 1";
     $chkstmt = mysqli_prepare($conn, $chksql);
     if (!$chkstmt) {
-        echo json_encode(['status' => 'error', 'message' => 'Database prepare failed: ' . mysqli_error($conn)]);
+        error_log("signup.php prepare check failed: " . mysqli_error($conn));
+        echo json_encode(['status' => 'error', 'message' => 'Server error.']);
         exit;
     }
     mysqli_stmt_bind_param($chkstmt, "s", $phone);
@@ -49,7 +50,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $sql = "INSERT INTO users (full_name, phone_number, password, role, profile_image_url, shift_schedule) VALUES (?, ?, ?, ?, ?, ?)";
     $stmt = mysqli_prepare($conn, $sql);
     if (!$stmt) {
-        echo json_encode(['status' => 'error', 'message' => 'Database prepare failed: ' . mysqli_error($conn)]);
+        error_log("signup.php insert prepare failed: " . mysqli_error($conn));
+        echo json_encode(['status' => 'error', 'message' => 'Server error.']);
         exit;
     }
     mysqli_stmt_bind_param($stmt, "ssssss", $full_name, $phone, $password_hash, $role, $profile_image_url, $shift_schedule);
@@ -65,7 +67,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ];
         echo json_encode(['status' => 'success', 'message' => 'Account registered successfully.', 'user' => $user]);
     } else {
-        echo json_encode(['status' => 'error', 'message' => mysqli_error($conn)]);
+        error_log("signup.php insert execute failed: " . mysqli_error($conn));
+        echo json_encode(['status' => 'error', 'message' => 'Server error.']);
     }
     mysqli_stmt_close($stmt);
 }

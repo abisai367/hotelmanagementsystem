@@ -29,7 +29,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (mysqli_stmt_execute($stmt)) {
         echo json_encode(['status' => 'success', 'message' => 'Encrypted ciphertext archived.']);
     } else {
-        echo json_encode(['status' => 'error', 'message' => mysqli_error($conn)]);
+        error_log("send_msg.php insert failed: " . mysqli_error($conn));
+        echo json_encode(['status' => 'error', 'message' => 'Server error.']);
     }
     mysqli_stmt_close($stmt);
 }

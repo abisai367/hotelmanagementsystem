@@ -120,8 +120,10 @@ try {
     ]);
 
 } catch (Exception $e) {
+    // Do not expose internal exception messages to clients. Log for operators instead.
+    error_log("admin_summary.php exception: " . $e->getMessage() . "\n" . $e->getTraceAsString());
     http_response_code(500);
-    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    echo json_encode(['status' => 'error', 'message' => 'Server error.']);
 }
 
 mysqli_close($conn);

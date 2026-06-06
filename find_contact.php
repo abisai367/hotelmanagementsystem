@@ -50,7 +50,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]
             ]);
         } else {
-            echo json_encode(['status' => 'error', 'message' => mysqli_error($conn)]);
+            error_log("find_contact.php insert contact failed: " . mysqli_error($conn));
+            echo json_encode(['status' => 'error', 'message' => 'Server error.']);
         }
         mysqli_stmt_close($contact_stmt);
     } else {

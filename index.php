@@ -20,7 +20,8 @@ $sql = "SELECT product_id, description, price, product_name, product_path FROM p
 $result = mysqli_query($conn, $sql);
 
 if (!$result) {
-    echo json_encode(["error" => "Query failed: " . mysqli_error($conn)]);
+    error_log("index.php query failed: " . mysqli_error($conn));
+    echo json_encode(["error" => "Server error."]);
     exit;
 }
 

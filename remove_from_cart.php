@@ -23,7 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $sql = "DELETE FROM cart WHERE id = ? AND customer_id = ? LIMIT 1";
     $stmt = mysqli_prepare($conn, $sql);
     if (!$stmt) {
-        echo json_encode(['status' => 'error', 'message' => mysqli_error($conn)]);
+        error_log("remove_from_cart.php prepare failed: " . mysqli_error($conn));
+        echo json_encode(['status' => 'error', 'message' => 'Server error.']);
         exit;
     }
 
@@ -36,7 +37,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo json_encode(['status' => 'error', 'message' => 'Item not found or already removed.']);
         }
     } else {
-        echo json_encode(['status' => 'error', 'message' => mysqli_error($conn)]);
+        error_log("remove_from_cart.php execute failed: " . mysqli_error($conn));
+        echo json_encode(['status' => 'error', 'message' => 'Server error.']);
     }
 
     mysqli_stmt_close($stmt);
