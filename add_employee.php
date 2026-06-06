@@ -30,32 +30,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
     
-    $full_name = $input['full_name'] ?? '';
-    $phone = $input['phone'] ?? '';
-    $role = $input['role'] ?? 'Employee';
-    $shift_schedule = $input['shift_schedule'] ?? '';
-    $profile_image_url = $input['profile_image_url'] ?? '';
-    $salary = isset($input['salary']) ? floatval($input['salary']) : null;
-    $password = $input['password'] ?? bin2hex(random_bytes(6)); // Default password if not provided
+    $full_name = trim($input['full_name'] ?? '');
+    $phone = trim($input['phone'] ?? $input['phone_number'] ?? '');
+    $role = trim($input['role'] ?? 'Employee');
+    $shift_schedule = trim($input['shift_schedule'] ?? '');
+    $profile_image_url = trim($input['profile_image_url'] ?? '');
+    $salary = isset($input['salary']) && $input['salary'] !== '' ? floatval($input['salary']) : null;
+    $password = trim($input['password'] ?? bin2hex(random_bytes(6)));
 
-    if (empty($full_name) || empty($phone)) {
+    if ($full_name === '' || $phone === '') {
         echo json_encode(['status' => 'error', 'message' => 'Name and phone are required']);
         exit;
     }
 
-    if ($role === 'customer' || $role === 'Customer') {
-        echo json_encode(['status' => 'error', 'message' => 'Cannot add a customer role through this endpoint']);
+    $role = strtolower($role) === 'customer' ? 'Employee' : $role;
+
+    $chksql = "SELECT id FROM users WHERE phone_number = ? LIMIT 1";
+    $chkstmt = mysqli_prepare($conn, $chksql);
+    if (!$chkstmt) {
+        error_log('add_employee check prepare failed: ' . mysqli_error($conn));
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Server error']);
         exit;
     }
-
-    $chksql = "SELECT id FROM users WHERE phone = ?";
-    $chkstmt = mysqli_prepare($conn, $chksql);
     mysqli_stmt_bind_param($chkstmt, "s", $phone);
     mysqli_stmt_execute($chkstmt);
     $result = mysqli_stmt_get_result($chkstmt);
-    
-    if (mysqli_num_rows($result) > 0) {
-        echo json_encode(['status' => 'error', 'message' => 'Phone number already exists']);   
+    if ($result && mysqli_num_rows($result) > 0) {
+        mysqli_stmt_close($chkstmt);
+        echo json_encode(['status' => 'error', 'message' => 'Phone number already exists']);
         exit;
     }
     mysqli_stmt_close($chkstmt);
@@ -64,23 +67,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!is_null($salary)) {
         $colCheck = mysqli_query($conn, "SHOW COLUMNS FROM users LIKE 'salary'");
-        if (mysqli_num_rows($colCheck) === 0) {
+        if ($colCheck && mysqli_num_rows($colCheck) === 0) {
             mysqli_query($conn, "ALTER TABLE users ADD COLUMN salary DECIMAL(10,2) DEFAULT 0");
         }
-        $sql = "INSERT INTO users (full_name, phone, password_hash, role, profile_image_url, shift_schedule, salary) VALUES (?, ?, ?, ?, ?, ?, ?)";
+        $sql = "INSERT INTO users (full_name, phone_number, password, role, profile_image_url, shift_schedule, salary) VALUES (?, ?, ?, ?, ?, ?, ?)";
         $stmt = mysqli_prepare($conn, $sql);
         if (!$stmt) {
-            error_log('add_employee prepare error: ' . $conn->error);
+            error_log('add_employee prepare error: ' . mysqli_error($conn));
             http_response_code(500);
             echo json_encode(['status' => 'error', 'message' => 'Server error']);
             exit;
         }
         mysqli_stmt_bind_param($stmt, "ssssssd", $full_name, $phone, $password_hash, $role, $profile_image_url, $shift_schedule, $salary);
     } else {
-        $sql = "INSERT INTO users (full_name, phone, password_hash, role, profile_image_url, shift_schedule) VALUES (?, ?, ?, ?, ?, ?)";
+        $sql = "INSERT INTO users (full_name, phone_number, password, role, profile_image_url, shift_schedule) VALUES (?, ?, ?, ?, ?, ?)";
         $stmt = mysqli_prepare($conn, $sql);
         if (!$stmt) {
-            error_log('add_employee prepare error: ' . $conn->error);
+            error_log('add_employee prepare error: ' . mysqli_error($conn));
             http_response_code(500);
             echo json_encode(['status' => 'error', 'message' => 'Server error']);
             exit;
