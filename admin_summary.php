@@ -12,28 +12,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 try {
     $range = $_GET['range'] ?? 'today';
+    function q($sql) {
+        global $conn;
+        $res = mysqli_query($conn, $sql);
+        if ($res === false) {
+            $err = mysqli_error($conn);
+            error_log("admin_summary.php SQL error: $err -- SQL: $sql");
+            if (isset($_GET['debug']) && $_GET['debug'] === '1') {
+                http_response_code(500);
+                echo json_encode(['status' => 'error', 'message' => 'SQL error', 'detail' => $err, 'sql' => $sql]);
+                mysqli_close($conn);
+                exit;
+            }
+            throw new Exception('Database query failed');
+        }
+        return $res;
+    }
 
     // totals
-    $res = mysqli_query($conn, "SELECT COUNT(*) AS total_orders FROM orders");
+    $res = q("SELECT COUNT(*) AS total_orders FROM orders");
     $totalOrders = ($row = mysqli_fetch_assoc($res)) ? intval($row['total_orders']) : 0;
 
-    $res = mysqli_query($conn, "SELECT SUM(p.price * o.quantity) AS revenue FROM orders o JOIN products p ON o.product_id = p.product_id");
+    $res = q("SELECT SUM(p.price * o.quantity) AS revenue FROM orders o JOIN products p ON o.product_id = p.product_id");
     $totalRevenue = ($row = mysqli_fetch_assoc($res)) ? floatval($row['revenue']) : 0.0;
 
-    $res = mysqli_query($conn, "SELECT COUNT(*) AS total_products FROM products");
+    $res = q("SELECT COUNT(*) AS total_products FROM products");
     $totalProducts = ($row = mysqli_fetch_assoc($res)) ? intval($row['total_products']) : 0;
 
-    $res = mysqli_query($conn, "SELECT COUNT(*) AS new_customers FROM users WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
+    $res = q("SELECT COUNT(*) AS new_customers FROM users WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
     $newCustomers = ($row = mysqli_fetch_assoc($res)) ? intval($row['new_customers']) : 0;
 
     $trending = [];
-    $res = mysqli_query($conn, "SELECT p.product_id, p.product_name, p.product_path, SUM(o.quantity) AS orders_count FROM orders o JOIN products p ON o.product_id = p.product_id GROUP BY p.product_id ORDER BY orders_count DESC LIMIT 10");
+    $res = q("SELECT p.product_id, p.product_name, p.product_path, SUM(o.quantity) AS orders_count FROM orders o JOIN products p ON o.product_id = p.product_id GROUP BY p.product_id ORDER BY orders_count DESC LIMIT 10");
     while ($r = mysqli_fetch_assoc($res)) {
         $trending[] = $r;
     }
 
     $employees = [];
-    $res = mysqli_query($conn, "SELECT id, full_name, profile_image_url, role FROM users WHERE role IN ('Employee','Supervisor') LIMIT 6");
+    $res = q("SELECT id, full_name, profile_image_url, role FROM users WHERE role IN ('Employee','Supervisor') LIMIT 6");
     while ($r = mysqli_fetch_assoc($res)) {
         $employees[] = $r;
     }
@@ -44,7 +60,7 @@ try {
     if ($range === 'today') {
         for ($h = 0; $h < 24; $h++) { $timeLabels[] = sprintf('%02d:00', $h); }
         $sql = "SELECT HOUR(IFNULL(pickup_time, NOW())) AS hr, order_type, SUM(o.quantity * IFNULL(p.price,0)) AS revenue FROM orders o JOIN products p ON o.product_id = p.product_id WHERE DATE(IFNULL(pickup_time, NOW())) = DATE(NOW()) GROUP BY hr, order_type";
-        $res = mysqli_query($conn, $sql);
+        $res = q($sql);
         while ($r = mysqli_fetch_assoc($res)) {
             $key = $r['order_type'];
             $idx = intval($r['hr']);
@@ -58,7 +74,7 @@ try {
     } elseif ($range === 'week') {
         for ($d = 6; $d >= 0; $d--) { $dt = date('Y-m-d', strtotime("-{$d} days")); $timeLabels[] = $dt; }
         $sql = "SELECT DATE(IFNULL(pickup_time, NOW())) AS dt, order_type, SUM(o.quantity * IFNULL(p.price,0)) AS revenue FROM orders o JOIN products p ON o.product_id = p.product_id WHERE DATE(IFNULL(pickup_time, NOW())) >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) GROUP BY dt, order_type";
-        $res = mysqli_query($conn, $sql);
+        $res = q($sql);
         $map = [];
         while ($r = mysqli_fetch_assoc($res)) {
             $key = $r['order_type'];
@@ -74,7 +90,7 @@ try {
     } elseif ($range === 'month') {
         for ($d = 29; $d >= 0; $d--) { $dt = date('Y-m-d', strtotime("-{$d} days")); $timeLabels[] = $dt; }
         $sql = "SELECT DATE(IFNULL(pickup_time, NOW())) AS dt, order_type, SUM(o.quantity * IFNULL(p.price,0)) AS revenue FROM orders o JOIN products p ON o.product_id = p.product_id WHERE DATE(IFNULL(pickup_time, NOW())) >= DATE_SUB(CURDATE(), INTERVAL 29 DAY) GROUP BY dt, order_type";
-        $res = mysqli_query($conn, $sql);
+        $res = q($sql);
         $map = [];
         while ($r = mysqli_fetch_assoc($res)) {
             $key = $r['order_type'];
@@ -90,7 +106,7 @@ try {
     } else {
         for ($m=1;$m<=12;$m++) { $timeLabels[] = date('M', mktime(0,0,0,$m,1)); }
         $sql = "SELECT MONTH(IFNULL(pickup_time, NOW())) AS mon, order_type, SUM(o.quantity * IFNULL(p.price,0)) AS revenue FROM orders o JOIN products p ON o.product_id = p.product_id WHERE YEAR(IFNULL(pickup_time, NOW())) = YEAR(CURDATE()) GROUP BY mon, order_type";
-        $res = mysqli_query($conn, $sql);
+        $res = q($sql);
         $map = [];
         while ($r = mysqli_fetch_assoc($res)) {
             $key = $r['order_type'];
