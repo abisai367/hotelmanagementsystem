@@ -18,11 +18,11 @@ if ($id <= 0) { echo json_encode(['status'=>'error','message'=>'Missing id']); e
 
 try {
     // Convert role to Customer (unemploy)
-    $stmt = $conn->prepare("UPDATE users SET role = 'Customer', shift_schedule = '' WHERE id = ? LIMIT 1");
+    $stmt = $conn->prepare("UPDATE users SET role = 'Customer', shift_schedule = '', salary = NULL WHERE id = ? LIMIT 1");
     if (!$stmt) { throw new Exception('Prepare failed: '.$conn->error); }
     $stmt->bind_param('i', $id);
     if (!$stmt->execute()) { throw new Exception('Execute failed: '.$stmt->error); }
-    echo json_encode(['status'=>'success','message'=>'Employee converted to customer']);
+    echo json_encode(['status'=>'success','message'=>'Employee unemployed successfully']);
 } catch (Exception $e) {
     error_log('unemploy_employee error: '.$e->getMessage());
     http_response_code(500);
