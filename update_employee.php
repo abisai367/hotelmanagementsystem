@@ -16,32 +16,47 @@ if (!$input) { echo json_encode(['status'=>'error','message'=>'Invalid JSON']); 
 $id = isset($input['id']) ? intval($input['id']) : 0;
 if ($id <= 0) { echo json_encode(['status'=>'error','message'=>'Missing id']); exit; }
 
+function columnExists($table, $column) {
+    global $conn;
+    $res = mysqli_query($conn, "SHOW COLUMNS FROM " . mysqli_real_escape_string($conn, $table) . " LIKE '" . mysqli_real_escape_string($conn, $column) . "'");
+    return $res && mysqli_num_rows($res) > 0;
+}
+
 $fields = [];
 $types = '';
 $values = [];
-if (isset($input['full_name'])) { $fields[]='full_name=?'; $types.='s'; $values[]=$input['full_name']; }
-if (isset($input['phone'])) { // detect column name later
-    // we'll update both possible columns if they exist
-    $fields[]='phone=?'; $types.='s'; $values[]=$input['phone'];
+if (isset($input['full_name']) && columnExists('users', 'full_name')) { $fields[]='full_name=?'; $types.='s'; $values[]=$input['full_name']; }
+
+$phoneValue = isset($input['phone']) ? $input['phone'] : null;
+$phoneColumns = [];
+if ($phoneValue !== null) {
+    if (columnExists('users', 'phone')) { $phoneColumns[] = 'phone'; }
+    if (columnExists('users', 'phone_number')) { $phoneColumns[] = 'phone_number'; }
+    foreach ($phoneColumns as $column) {
+        $fields[] = "$column=?";
+        $types .= 's';
+        $values[] = $phoneValue;
+    }
 }
-if (isset($input['role'])) { $fields[]='role=?'; $types.='s'; $values[]=$input['role']; }
-if (isset($input['shift_schedule'])) { $fields[]='shift_schedule=?'; $types.='s'; $values[]=$input['shift_schedule']; }
-if (isset($input['profile_image_url'])) { $fields[]='profile_image_url=?'; $types.='s'; $values[]=$input['profile_image_url']; }
-if (isset($input['salary'])) { $fields[]='salary=?'; $types.='d'; $values[]=$input['salary']; }
+
+if (isset($input['role']) && columnExists('users', 'role')) { $fields[]='role=?'; $types.='s'; $values[]=$input['role']; }
+if (isset($input['shift_schedule']) && columnExists('users', 'shift_schedule')) { $fields[]='shift_schedule=?'; $types.='s'; $values[]=$input['shift_schedule']; }
+if (isset($input['profile_image_url']) && columnExists('users', 'profile_image_url')) { $fields[]='profile_image_url=?'; $types.='s'; $values[]=$input['profile_image_url']; }
+if (isset($input['salary'])) {
+    if (!columnExists('users', 'salary')) {
+        mysqli_query($conn, "ALTER TABLE users ADD COLUMN salary DECIMAL(10,2) DEFAULT 0");
+    }
+    if (columnExists('users', 'salary')) {
+        $fields[]='salary=?'; $types.='d'; $values[]=$input['salary'];
+    }
+}
 
 try {
     if (count($fields) === 0) { echo json_encode(['status'=>'error','message'=>'No fields to update']); exit; }
 
-    // Ensure salary column exists if requested
-    if (strpos(implode(',',$fields),'salary') !== false) {
-        $colCheck = mysqli_query($conn, "SHOW COLUMNS FROM users LIKE 'salary'");
-        if (mysqli_num_rows($colCheck) === 0) {
-            mysqli_query($conn, "ALTER TABLE users ADD COLUMN salary DECIMAL(10,2) DEFAULT 0");
-        }
-    }
-
     $sql = 'UPDATE users SET '.implode(', ', $fields).' WHERE id = ? LIMIT 1';
     $types .= 'i'; $values[] = $id;
+
     $stmt = $conn->prepare($sql);
     if (!$stmt) { throw new Exception('Prepare failed: '.$conn->error); }
     $stmt->bind_param($types, ...$values);
