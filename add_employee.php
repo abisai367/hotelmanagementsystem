@@ -35,6 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $role = $input['role'] ?? 'Employee';
     $shift_schedule = $input['shift_schedule'] ?? '';
     $profile_image_url = $input['profile_image_url'] ?? '';
+    $salary = isset($input['salary']) ? floatval($input['salary']) : null;
     $password = $input['password'] ?? bin2hex(random_bytes(6)); // Default password if not provided
 
     if (empty($full_name) || empty($phone)) {
@@ -61,17 +62,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $password_hash = password_hash($password, PASSWORD_BCRYPT);
 
-    $sql = "INSERT INTO users (full_name, phone, password_hash, role, profile_image_url, shift_schedule) VALUES (?, ?, ?, ?, ?, ?)";
-    $stmt = mysqli_prepare($conn, $sql);
-    
-    if (!$stmt) {
-        error_log('add_employee prepare error: ' . $conn->error);
-        http_response_code(500);
-        echo json_encode(['status' => 'error', 'message' => 'Server error']);
-        exit;
+    if (!is_null($salary)) {
+        $colCheck = mysqli_query($conn, "SHOW COLUMNS FROM users LIKE 'salary'");
+        if (mysqli_num_rows($colCheck) === 0) {
+            mysqli_query($conn, "ALTER TABLE users ADD COLUMN salary DECIMAL(10,2) DEFAULT 0");
+        }
+        $sql = "INSERT INTO users (full_name, phone, password_hash, role, profile_image_url, shift_schedule, salary) VALUES (?, ?, ?, ?, ?, ?, ?)";
+        $stmt = mysqli_prepare($conn, $sql);
+        if (!$stmt) {
+            error_log('add_employee prepare error: ' . $conn->error);
+            http_response_code(500);
+            echo json_encode(['status' => 'error', 'message' => 'Server error']);
+            exit;
+        }
+        mysqli_stmt_bind_param($stmt, "ssssssd", $full_name, $phone, $password_hash, $role, $profile_image_url, $shift_schedule, $salary);
+    } else {
+        $sql = "INSERT INTO users (full_name, phone, password_hash, role, profile_image_url, shift_schedule) VALUES (?, ?, ?, ?, ?, ?)";
+        $stmt = mysqli_prepare($conn, $sql);
+        if (!$stmt) {
+            error_log('add_employee prepare error: ' . $conn->error);
+            http_response_code(500);
+            echo json_encode(['status' => 'error', 'message' => 'Server error']);
+            exit;
+        }
+        mysqli_stmt_bind_param($stmt, "ssssss", $full_name, $phone, $password_hash, $role, $profile_image_url, $shift_schedule);
     }
-    
-    mysqli_stmt_bind_param($stmt, "ssssss", $full_name, $phone, $password_hash, $role, $profile_image_url, $shift_schedule);
 
     if (mysqli_stmt_execute($stmt)) {
         echo json_encode(['status' => 'success', 'message' => 'Employee added successfully']);
