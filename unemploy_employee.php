@@ -16,9 +16,23 @@ if (!$input) { echo json_encode(['status'=>'error','message'=>'Invalid JSON']); 
 $id = isset($input['id']) ? intval($input['id']) : 0;
 if ($id <= 0) { echo json_encode(['status'=>'error','message'=>'Missing id']); exit; }
 
+function columnExists($table, $column) {
+    global $conn;
+    $res = mysqli_query($conn, "SHOW COLUMNS FROM " . mysqli_real_escape_string($conn, $table) . " LIKE '" . mysqli_real_escape_string($conn, $column) . "'");
+    return $res && mysqli_num_rows($res) > 0;
+}
+
 try {
-    // Convert role to Customer (unemploy)
-    $stmt = $conn->prepare("UPDATE users SET role = 'Customer', shift_schedule = '', salary = NULL WHERE id = ? LIMIT 1");
+    // Convert role to Customer (unemploy), with fallback for missing columns
+    $hasShiftSchedule = columnExists('users', 'shift_schedule');
+    $hasSalary = columnExists('users', 'salary');
+    
+    $updates = ["role = 'Customer'"];
+    if ($hasShiftSchedule) $updates[] = "shift_schedule = ''";
+    if ($hasSalary) $updates[] = "salary = NULL";
+    
+    $updateClause = implode(', ', $updates);
+    $stmt = $conn->prepare("UPDATE users SET $updateClause WHERE id = ? LIMIT 1");
     if (!$stmt) { throw new Exception('Prepare failed: '.$conn->error); }
     $stmt->bind_param('i', $id);
     if (!$stmt->execute()) { throw new Exception('Execute failed: '.$stmt->error); }
