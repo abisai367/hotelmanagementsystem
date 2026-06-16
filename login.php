@@ -1,5 +1,6 @@
 <?php
 include "database.php"; 
+include_once "hotel_helpers.php";
 
 header("Content-Type: application/json");
 header("Access-Control-Allow-Origin: *");
@@ -12,6 +13,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    ensureCoreSchema($conn);
+    normalizeExistingRoles($conn);
+
     $phone = $_POST['phone'] ?? '';
     $password = $_POST['password'] ?? '';
 
@@ -20,7 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    $sql = "SELECT id, full_name, password, role, profile_image_url, shift_schedule FROM users WHERE phone_number = ? LIMIT 1";
+    $sql = "SELECT id, full_name, password, role, profile_image_url, shift_schedule, salary FROM users WHERE phone_number = ? LIMIT 1";
     $stmt = mysqli_prepare($conn, $sql);
     
     if (!$stmt) {
@@ -41,9 +45,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'user' => [
                     'id' => $row['id'],
                     'full_name' => $row['full_name'],
-                    'role' => $row['role'],
+                    'role' => normalizeHotelRole($row['role']),
                     'profile_image_url' => $row['profile_image_url'],
-                    'shift_schedule' => $row['shift_schedule']
+                    'shift_schedule' => $row['shift_schedule'],
+                    'salary' => $row['salary'] ?? 0
                 ]
             ]);
             

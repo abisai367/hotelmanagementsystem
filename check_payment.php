@@ -3,8 +3,10 @@ header("Content-Type: application/json");
 header("Access-Control-Allow-Origin: *");
 $conn = null;
 include 'database.php';
+include_once 'hotel_helpers.php';
 /** @var mysqli $conn */
 if (!isset($conn) || !$conn) { error_log('check_payment: missing DB connection'); http_response_code(500); echo json_encode(['status'=>'error','message'=>'Database connection unavailable']); exit; }
+ensureCoreSchema($conn);
 
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     http_response_code(405);

@@ -79,6 +79,8 @@ $orderType = $data['orderType'] ?? 'dineIn';
 $tableNumber = $data['tableNumber'] ?? null;
 $pickupTime = $data['pickupTime'] ?? null;
 $deliveryAddress = $data['deliveryAddress'] ?? null;
+$deliveryLatitude = isset($data['deliveryLatitude']) ? floatval($data['deliveryLatitude']) : null;
+$deliveryLongitude = isset($data['deliveryLongitude']) ? floatval($data['deliveryLongitude']) : null;
 $contactNumber = $data['contactNumber'] ?? null;
 
 if (!$phone || !$amount || !$customerId) {
@@ -122,12 +124,30 @@ if ($orderType === 'takeAway') {
         echo json_encode(["status" => "error", "message" => "Contact number is required for take-away orders"]);
         exit;
     }
+    $deliveryAddress = null;
+    $deliveryLatitude = null;
+    $deliveryLongitude = null;
 }
 
 if ($orderType === 'delivery') {
     if (!$deliveryAddress) {
         http_response_code(400);
         echo json_encode(["status" => "error", "message" => "Delivery address is required for delivery orders"]);
+        exit;
+    }
+    if ($deliveryLatitude === null || $deliveryLongitude === null) {
+        http_response_code(400);
+        echo json_encode(["status" => "error", "message" => "Delivery location coordinates are required for delivery orders"]);
+        exit;
+    }
+    if (!is_numeric($deliveryLatitude) || !is_numeric($deliveryLongitude)) {
+        http_response_code(400);
+        echo json_encode(["status" => "error", "message" => "Invalid delivery coordinates"]);
+        exit;
+    }
+    if ($deliveryLatitude < -90 || $deliveryLatitude > 90 || $deliveryLongitude < -180 || $deliveryLongitude > 180) {
+        http_response_code(400);
+        echo json_encode(["status" => "error", "message" => "Delivery coordinates out of valid range"]);
         exit;
     }
     if (!$contactNumber) {
@@ -140,6 +160,8 @@ if ($orderType === 'delivery') {
 
 if ($orderType === 'dineIn') {
     $deliveryAddress = null;
+    $deliveryLatitude = null;
+    $deliveryLongitude = null;
     $contactNumber = null;
     $pickupTime = null;
 }
@@ -246,13 +268,13 @@ try {
             // fall back to an insert without amount so the flow continues.
             $orderId = 0;
             $insertStmt = $conn->prepare(
-                "INSERT INTO orders (customer_id, amount, phone_number, order_type, table_number, pickup_time, delivery_address, contact_number, payment_status, created_at) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending', NOW())"
+                "INSERT INTO orders (customer_id, amount, phone_number, order_type, table_number, pickup_time, delivery_address, delivery_latitude, delivery_longitude, contact_number, payment_status, created_at) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', NOW())"
             );
 
             if ($insertStmt) {
                 $insertStmt->bind_param(
-                    "isssssss",
+                    "isssssssddi",
                     $customerId,
                     $amount,
                     $phone,
@@ -260,6 +282,8 @@ try {
                     $tableNumber,
                     $pickupTime,
                     $deliveryAddress,
+                    $deliveryLatitude,
+                    $deliveryLongitude,
                     $contactNumber
                 );
 
@@ -269,20 +293,22 @@ try {
                     if (strpos($err, "Unknown column 'amount'") !== false || mysqli_errno($conn) === 1054) {
                         $insertStmt->close();
                         $insertStmt = $conn->prepare(
-                            "INSERT INTO orders (customer_id, phone_number, order_type, table_number, pickup_time, delivery_address, contact_number, payment_status, created_at) 
-                             VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending', NOW())"
+                            "INSERT INTO orders (customer_id, phone_number, order_type, table_number, pickup_time, delivery_address, delivery_latitude, delivery_longitude, contact_number, payment_status, created_at) 
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', NOW())"
                         );
                         if (!$insertStmt) {
                             throw new Exception('Database insert failed (fallback prepare): ' . $conn->error);
                         }
                         $insertStmt->bind_param(
-                            "issssss",
+                            "isssssddi",
                             $customerId,
                             $phone,
                             $orderType,
                             $tableNumber,
                             $pickupTime,
                             $deliveryAddress,
+                            $deliveryLatitude,
+                            $deliveryLongitude,
                             $contactNumber
                         );
                         if (!$insertStmt->execute()) {

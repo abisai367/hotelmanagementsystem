@@ -7,8 +7,11 @@ header('Access-Control-Allow-Methods: POST, OPTIONS');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 $conn = null;
 include 'database.php';
+include_once 'hotel_helpers.php';
 /** @var mysqli $conn */
 if (!isset($conn) || !$conn) { error_log('update_employee: missing DB connection'); http_response_code(500); echo json_encode(['status'=>'error','message'=>'Database connection unavailable']); exit; }
+ensureCoreSchema($conn);
+normalizeExistingRoles($conn);
 
 $input = json_decode(file_get_contents('php://input'), true);
 if (!$input) { echo json_encode(['status'=>'error','message'=>'Invalid JSON']); exit; }
@@ -16,22 +19,16 @@ if (!$input) { echo json_encode(['status'=>'error','message'=>'Invalid JSON']); 
 $id = isset($input['id']) ? intval($input['id']) : 0;
 if ($id <= 0) { echo json_encode(['status'=>'error','message'=>'Missing id']); exit; }
 
-function columnExists($table, $column) {
-    global $conn;
-    $res = mysqli_query($conn, "SHOW COLUMNS FROM " . mysqli_real_escape_string($conn, $table) . " LIKE '" . mysqli_real_escape_string($conn, $column) . "'");
-    return $res && mysqli_num_rows($res) > 0;
-}
-
 $fields = [];
 $types = '';
 $values = [];
-if (isset($input['full_name']) && columnExists('users', 'full_name')) { $fields[]='full_name=?'; $types.='s'; $values[]=$input['full_name']; }
+if (isset($input['full_name']) && columnExists($conn, 'users', 'full_name')) { $fields[]='full_name=?'; $types.='s'; $values[]=$input['full_name']; }
 
 $phoneValue = isset($input['phone']) ? $input['phone'] : null;
 $phoneColumns = [];
 if ($phoneValue !== null) {
-    if (columnExists('users', 'phone')) { $phoneColumns[] = 'phone'; }
-    if (columnExists('users', 'phone_number')) { $phoneColumns[] = 'phone_number'; }
+    if (columnExists($conn, 'users', 'phone')) { $phoneColumns[] = 'phone'; }
+    if (columnExists($conn, 'users', 'phone_number')) { $phoneColumns[] = 'phone_number'; }
     foreach ($phoneColumns as $column) {
         $fields[] = "$column=?";
         $types .= 's';
@@ -39,14 +36,40 @@ if ($phoneValue !== null) {
     }
 }
 
-if (isset($input['role']) && columnExists('users', 'role')) { $fields[]='role=?'; $types.='s'; $values[]=$input['role']; }
-if (isset($input['shift_schedule']) && columnExists('users', 'shift_schedule')) { $fields[]='shift_schedule=?'; $types.='s'; $values[]=$input['shift_schedule']; }
-if (isset($input['profile_image_url']) && columnExists('users', 'profile_image_url')) { $fields[]='profile_image_url=?'; $types.='s'; $values[]=$input['profile_image_url']; }
-if (isset($input['salary'])) {
-    if (!columnExists('users', 'salary')) {
-        mysqli_query($conn, "ALTER TABLE users ADD COLUMN salary DECIMAL(10,2) DEFAULT 0");
+if (isset($input['email']) && columnExists($conn, 'users', 'email')) {
+    $emailValue = trim($input['email']);
+    if ($emailValue !== '') {
+        $dupStmt = $conn->prepare('SELECT id FROM users WHERE email = ? AND id <> ? LIMIT 1');
+        if ($dupStmt) {
+            $dupStmt->bind_param('si', $emailValue, $id);
+            $dupStmt->execute();
+            $dupResult = $dupStmt->get_result();
+            if ($dupResult && $dupResult->num_rows > 0) {
+                echo json_encode(['status'=>'error','message'=>'Email already belongs to another account']);
+                $dupStmt->close();
+                mysqli_close($conn);
+                exit;
+            }
+            $dupStmt->close();
+        }
+        $fields[] = 'email=?';
+        $types .= 's';
+        $values[] = $emailValue;
     }
-    if (columnExists('users', 'salary')) {
+}
+
+if (isset($input['role']) && columnExists($conn, 'users', 'role')) {
+    $role = normalizeHotelRole($input['role']);
+    if (!in_array($role, hotelStaffRoles(), true)) {
+        echo json_encode(['status'=>'error','message'=>'Invalid staff role']);
+        exit;
+    }
+    $fields[]='role=?'; $types.='s'; $values[]=$role;
+}
+if (isset($input['shift_schedule']) && columnExists($conn, 'users', 'shift_schedule')) { $fields[]='shift_schedule=?'; $types.='s'; $values[]=$input['shift_schedule']; }
+if (isset($input['profile_image_url']) && columnExists($conn, 'users', 'profile_image_url')) { $fields[]='profile_image_url=?'; $types.='s'; $values[]=$input['profile_image_url']; }
+if (isset($input['salary'])) {
+    if (columnExists($conn, 'users', 'salary')) {
         $fields[]='salary=?'; $types.='d'; $values[]=$input['salary'];
     }
 }

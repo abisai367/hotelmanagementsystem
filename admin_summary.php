@@ -27,90 +27,181 @@ function q($sql) {
     return $res;
 }
 
-function tableExists($table) {
+
+
+function getOrderDateExpression() {
     global $conn;
-    $res = mysqli_query($conn, "SHOW TABLES LIKE '" . mysqli_real_escape_string($conn, $table) . "'");
-    return $res && mysqli_num_rows($res) > 0;
+    if (columnExists($conn, 'orders', 'day_created')) {
+        return "IFNULL(o.day_created, IFNULL(o.pickup_time, o.created_at))";
+    }
+    return "IFNULL(o.pickup_time, o.created_at)";
 }
 
-function columnExists($table, $column) {
-    global $conn;
-    $res = mysqli_query($conn, "SHOW COLUMNS FROM " . mysqli_real_escape_string($conn, $table) . " LIKE '" . mysqli_real_escape_string($conn, $column) . "'");
-    return $res && mysqli_num_rows($res) > 0;
+function getDateRangeWhere($range) {
+    $orderDate = getOrderDateExpression();
+    if ($range === 'today') {
+        return "DATE($orderDate) = DATE(NOW())";
+    }
+    if ($range === 'week') {
+        return "DATE($orderDate) >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)";
+    }
+    if ($range === 'month') {
+        return "DATE($orderDate) >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)";
+    }
+    return "YEAR($orderDate) = YEAR(CURDATE())";
 }
 
-function buildRevenueQuery() {
+function buildRevenueQuery($range = 'today') {
     global $conn;
-    if (columnExists('orders', 'product_id') && columnExists('orders', 'quantity')) {
-        return "SELECT SUM(p.price * o.quantity) AS revenue FROM orders o JOIN products p ON o.product_id = p.product_id";
+    $dateWhere = getDateRangeWhere($range);
+    
+    if (tableExists($conn, 'order_items')) {
+        return "SELECT SUM(oi.quantity * IFNULL(oi.price,0)) AS revenue FROM order_items oi JOIN orders o ON oi.order_id = o.order_id WHERE $dateWhere";
     }
-    if (tableExists('order_items')) {
-        return "SELECT SUM(oi.quantity * IFNULL(oi.price,0)) AS revenue FROM order_items oi";
+    if (columnExists($conn, 'orders', 'product_id') && columnExists($conn, 'orders', 'quantity')) {
+        return "SELECT SUM(p.price * o.quantity) AS revenue FROM orders o JOIN products p ON o.product_id = p.product_id WHERE $dateWhere";
     }
-    if (columnExists('orders', 'total_price')) {
-        return "SELECT SUM(total_price) AS revenue FROM orders";
+    if (columnExists($conn, 'orders', 'total_price')) {
+        return "SELECT SUM(total_price) AS revenue FROM orders o WHERE $dateWhere";
     }
     return "SELECT 0 AS revenue";
 }
 
-function buildTrendingQuery() {
+function buildTrendingQuery($range = 'today') {
     global $conn;
-    if (columnExists('orders', 'product_id') && columnExists('orders', 'quantity')) {
-        return "SELECT p.product_id, p.product_name, p.product_path, SUM(o.quantity) AS orders_count FROM orders o JOIN products p ON o.product_id = p.product_id GROUP BY p.product_id ORDER BY orders_count DESC LIMIT 10";
+    $dateWhere = getDateRangeWhere($range);
+    
+    if (tableExists($conn, 'order_items')) {
+        return "SELECT p.product_id, p.product_name, p.product_path, SUM(oi.quantity) AS orders_count FROM order_items oi JOIN orders o ON oi.order_id = o.order_id JOIN products p ON oi.product_id = p.product_id WHERE $dateWhere GROUP BY p.product_id ORDER BY orders_count DESC LIMIT 10";
     }
-    if (tableExists('order_items')) {
-        return "SELECT p.product_id, p.product_name, p.product_path, SUM(oi.quantity) AS orders_count FROM order_items oi JOIN products p ON oi.product_id = p.product_id GROUP BY p.product_id ORDER BY orders_count DESC LIMIT 10";
+    if (columnExists($conn, 'orders', 'product_id') && columnExists($conn, 'orders', 'quantity')) {
+        return "SELECT p.product_id, p.product_name, p.product_path, SUM(o.quantity) AS orders_count FROM orders o JOIN products p ON o.product_id = p.product_id WHERE $dateWhere GROUP BY p.product_id ORDER BY orders_count DESC LIMIT 10";
     }
     return "SELECT p.product_id, p.product_name, p.product_path, 0 AS orders_count FROM products p ORDER BY p.product_id DESC LIMIT 10";
 }
 
 function buildRangeQuery($range) {
-    if (!columnExists('orders', 'order_type') || !columnExists('orders', 'pickup_time')) {
+    global $conn;
+    if (!columnExists($conn, 'orders', 'order_type') || !columnExists($conn, 'orders', 'pickup_time')) {
         return null;
     }
 
-    $timeQuery = tableExists('order_items')
+    $timeQuery = tableExists($conn, 'order_items')
         ? "SUM(oi.quantity * IFNULL(oi.price,0)) AS revenue FROM orders o JOIN order_items oi ON oi.order_id = o.order_id"
         : "SUM(o.quantity * IFNULL(p.price,0)) AS revenue FROM orders o JOIN products p ON o.product_id = p.product_id";
 
+    $orderDate = getOrderDateExpression();
     if ($range === 'today') {
-        return "SELECT HOUR(IFNULL(o.pickup_time, NOW())) AS hr, o.order_type, $timeQuery WHERE DATE(IFNULL(o.pickup_time, NOW())) = DATE(NOW()) GROUP BY hr, o.order_type";
+        return "SELECT HOUR($orderDate) AS hr, o.order_type, $timeQuery WHERE DATE($orderDate) = DATE(NOW()) GROUP BY hr, o.order_type";
     }
     if ($range === 'week') {
-        return "SELECT DATE(IFNULL(o.pickup_time, NOW())) AS dt, o.order_type, $timeQuery WHERE DATE(IFNULL(o.pickup_time, NOW())) >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) GROUP BY dt, o.order_type";
+        return "SELECT DATE($orderDate) AS dt, o.order_type, $timeQuery WHERE DATE($orderDate) >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) GROUP BY dt, o.order_type";
     }
     if ($range === 'month') {
-        return "SELECT DATE(IFNULL(o.pickup_time, NOW())) AS dt, o.order_type, $timeQuery WHERE DATE(IFNULL(o.pickup_time, NOW())) >= DATE_SUB(CURDATE(), INTERVAL 29 DAY) GROUP BY dt, o.order_type";
+        return "SELECT DATE($orderDate) AS dt, o.order_type, $timeQuery WHERE DATE($orderDate) >= DATE_SUB(CURDATE(), INTERVAL 29 DAY) GROUP BY dt, o.order_type";
     }
-    return "SELECT MONTH(IFNULL(o.pickup_time, NOW())) AS mon, o.order_type, $timeQuery WHERE YEAR(IFNULL(o.pickup_time, NOW())) = YEAR(CURDATE()) GROUP BY mon, o.order_type";
+    return "SELECT MONTH($orderDate) AS mon, o.order_type, $timeQuery WHERE YEAR($orderDate) = YEAR(CURDATE()) GROUP BY mon, o.order_type";
 }
 
 try {
     $range = $_GET['range'] ?? 'today';
+    $staffRoles = "'waiter','cooks','security','delivery person','supervisor','manager','admin'";
+    $payrollRoles = "'waiter','cooks','security','delivery person','supervisor','manager'";
+    $dateWhere = getDateRangeWhere($range);
+    
+    if (!columnExists($conn, 'users', 'salary')) {
+        @mysqli_query($conn, "ALTER TABLE users ADD COLUMN salary DECIMAL(10,2) NOT NULL DEFAULT 0");
+    }
+    if (!tableExists($conn, 'salary_payments')) {
+        @mysqli_query($conn, "CREATE TABLE salary_payments (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            batch_id INT NOT NULL,
+            employee_id INT NOT NULL,
+            salary_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+            payment_status VARCHAR(30) NOT NULL DEFAULT 'Pending',
+            paid_at DATETIME NULL DEFAULT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_salary_employee (employee_id),
+            INDEX idx_salary_batch (batch_id),
+            INDEX idx_salary_status (payment_status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+    @mysqli_query($conn, "UPDATE users SET role = 'waiter' WHERE LOWER(role) = 'employee'");
+    @mysqli_query($conn, "UPDATE users SET role = 'supervisor' WHERE LOWER(role) = 'supervisor'");
+    @mysqli_query($conn, "UPDATE users SET role = 'admin' WHERE LOWER(role) = 'admin'");
 
-    // totals
-    $res = q("SELECT COUNT(*) AS total_orders FROM orders");
+    // totals - filtered by range
+    $res = q("SELECT COUNT(*) AS total_orders FROM orders o WHERE $dateWhere");
     $totalOrders = ($row = mysqli_fetch_assoc($res)) ? intval($row['total_orders']) : 0;
 
-    $res = q(buildRevenueQuery());
+    $res = q(buildRevenueQuery($range));
     $totalRevenue = ($row = mysqli_fetch_assoc($res)) ? floatval($row['revenue']) : 0.0;
 
     $res = q("SELECT COUNT(*) AS total_products FROM products");
     $totalProducts = ($row = mysqli_fetch_assoc($res)) ? intval($row['total_products']) : 0;
 
-    $res = q("SELECT COUNT(*) AS new_customers FROM users WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
+    // new customers in the range
+    if ($range === 'today') {
+        $customerWhere = "DATE(u.created_at) = DATE(NOW())";
+    } elseif ($range === 'week') {
+        $customerWhere = "DATE(u.created_at) >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)";
+    } elseif ($range === 'month') {
+        $customerWhere = "DATE(u.created_at) >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)";
+    } else {
+        $customerWhere = "YEAR(u.created_at) = YEAR(CURDATE())";
+    }
+    $res = q("SELECT COUNT(*) AS new_customers FROM users u WHERE $customerWhere");
     $newCustomers = ($row = mysqli_fetch_assoc($res)) ? intval($row['new_customers']) : 0;
 
     $trending = [];
-    $res = q(buildTrendingQuery());
+    $res = q(buildTrendingQuery($range));
     while ($r = mysqli_fetch_assoc($res)) {
         $trending[] = $r;
     }
 
     $employees = [];
-    $res = q("SELECT id, full_name, profile_image_url, role FROM users WHERE role IN ('Employee','Supervisor') LIMIT 6");
+    $orderDate = getOrderDateExpression();
+    if (tableExists($conn, 'work_assignments')) {
+        $employeeSql = "SELECT u.id, u.full_name, u.profile_image_url, u.role, COUNT(DISTINCT wa.order_id) AS assignments_count
+            FROM users u
+            JOIN work_assignments wa ON wa.employee_id = u.id
+            JOIN orders o ON o.order_id = wa.order_id
+            WHERE LOWER(u.role) IN ({$staffRoles})
+            AND wa.status IN ('assigned','completed')
+            AND " . getDateRangeWhere($range) . "
+            GROUP BY u.id
+            ORDER BY assignments_count DESC
+            LIMIT 6";
+        $res = q($employeeSql);
+        while ($r = mysqli_fetch_assoc($res)) {
+            $employees[] = $r;
+        }
+    }
+
+    if (count($employees) === 0) {
+        $res = q("SELECT id, full_name, profile_image_url, role FROM users WHERE LOWER(role) IN ({$staffRoles}) LIMIT 6");
+        while ($r = mysqli_fetch_assoc($res)) {
+            $employees[] = $r;
+        }
+    }
+
+    $unpaidEmployees = [];
+    $unpaidSql = "SELECT u.id, u.full_name, u.role, COALESCE(u.salary, 0) AS salary
+        FROM users u
+        WHERE LOWER(u.role) IN ({$payrollRoles})
+        AND COALESCE(u.salary, 0) > 0
+        AND NOT EXISTS (
+            SELECT 1
+            FROM salary_payments sp
+            WHERE sp.employee_id = u.id
+            AND sp.payment_status = 'Paid'
+            AND sp.created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
+        )
+        ORDER BY u.full_name ASC
+        LIMIT 12";
+    $res = q($unpaidSql);
     while ($r = mysqli_fetch_assoc($res)) {
-        $employees[] = $r;
+        $unpaidEmployees[] = $r;
     }
     $timeLabels = [];
     $series = ['dineIn'=>[], 'takeAway'=>[], 'delivery'=>[]];
@@ -195,6 +286,8 @@ try {
         'newCustomers' => $newCustomers,
         'trending' => $trending,
         'employees' => $employees,
+        'unpaidEmployees' => $unpaidEmployees,
+        'unpaidPayrollTotal' => array_reduce($unpaidEmployees, fn($sum, $employee) => $sum + floatval($employee['salary']), 0),
         'labels' => $timeLabels,
         'series' => $series,
         'breakdown' => $breakdown,

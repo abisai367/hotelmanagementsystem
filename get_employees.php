@@ -1,59 +1,62 @@
 <?php
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
+
 $conn = null;
 include 'database.php';
-/** @var mysqli $conn */
-if (!isset($conn) || !$conn) { error_log('get_employees: missing DB connection'); http_response_code(500); echo json_encode(['status'=>'error','message'=>'Database connection unavailable']); exit; }
+include_once 'hotel_helpers.php';
 
-function columnExists($table, $column) {
-    global $conn;
-    $res = mysqli_query($conn, "SHOW COLUMNS FROM " . mysqli_real_escape_string($conn, $table) . " LIKE '" . mysqli_real_escape_string($conn, $column) . "'");
-    return $res && mysqli_num_rows($res) > 0;
-}
-
-function tableExists($table) {
-    global $conn;
-    $res = mysqli_query($conn, "SHOW TABLES LIKE '" . mysqli_real_escape_string($conn, $table) . "'");
-    return $res && mysqli_num_rows($res) > 0;
+if (!isset($conn) || !$conn) {
+    error_log('get_employees: missing DB connection');
+    http_response_code(500);
+    echo json_encode(['status' => 'error', 'message' => 'Database connection unavailable']);
+    exit;
 }
 
 try {
-    if (!tableExists('users')) {
+    ensureCoreSchema($conn);
+    normalizeExistingRoles($conn);
+
+    if (!tableExists($conn, 'users')) {
         echo json_encode(['status' => 'success', 'employees' => []]);
         exit;
     }
 
-    $phoneField = '"" AS phone';
-    if (columnExists('users', 'phone') && columnExists('users', 'phone_number')) {
-        $phoneField = "COALESCE(phone, phone_number, '') AS phone";
-    } elseif (columnExists('users', 'phone')) {
-        $phoneField = "phone AS phone";
-    } elseif (columnExists('users', 'phone_number')) {
-        $phoneField = "phone_number AS phone";
-    }
+    $phoneField = columnExists($conn, 'users', 'phone_number') ? 'phone_number AS phone' : "'' AS phone";
+    $shiftField = columnExists($conn, 'users', 'shift_schedule') ? 'shift_schedule' : "'' AS shift_schedule";
+    $createdAtField = columnExists($conn, 'users', 'created_at') ? 'created_at' : "'' AS created_at";
+    $salaryField = columnExists($conn, 'users', 'salary') ? 'COALESCE(salary, 0) AS salary' : '0 AS salary';
+    $roles = roleSqlList($conn, hotelStaffRoles());
 
-    $shiftField = columnExists('users', 'shift_schedule') ? 'shift_schedule' : "'' AS shift_schedule";
-    $salaryField = columnExists('users', 'salary') ? 'COALESCE(salary, 0) AS salary' : '0 AS salary';
-    $createdAtField = columnExists('users', 'created_at') ? 'created_at' : "'' AS created_at";
-
-    $sql = "SELECT id, full_name, $phoneField, role, profile_image_url, $shiftField, $createdAtField, $salaryField FROM users WHERE role IN ('Employee','Supervisor') ORDER BY id DESC";
+    $sql = "SELECT id, full_name, {$phoneField}, role, profile_image_url, {$shiftField}, {$createdAtField}, {$salaryField}
+        FROM users
+        WHERE LOWER(role) IN ({$roles})
+        ORDER BY id DESC";
     $res = mysqli_query($conn, $sql);
-    
+
     if (!$res) {
         error_log('get_employees SQL error: ' . mysqli_error($conn) . " -- SQL: $sql");
         throw new Exception('Query failed');
     }
-    
+
     $out = [];
-    while ($r = mysqli_fetch_assoc($res)) {
-        $out[] = $r;
+    while ($row = mysqli_fetch_assoc($res)) {
+        $row['role'] = normalizeHotelRole($row['role']);
+        $salaryStatus = salaryStatusForEmployee($conn, intval($row['id']));
+        $row['salary_status'] = $salaryStatus['status'];
+        $row['last_salary_paid_at'] = $salaryStatus['paid_at'];
+        $out[] = $row;
     }
-    echo json_encode(['status'=>'success','employees'=>$out]);
+
+    echo json_encode([
+        'status' => 'success',
+        'employees' => $out,
+        'roles' => hotelStaffRoles(),
+    ]);
 } catch (Exception $e) {
-    error_log('get_employees error: '.$e->getMessage());
+    error_log('get_employees error: ' . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['status'=>'error','message'=>'Server error']);
+    echo json_encode(['status' => 'error', 'message' => 'Server error']);
 }
 
 mysqli_close($conn);

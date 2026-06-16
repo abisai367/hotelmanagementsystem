@@ -11,8 +11,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 $conn = null;
 include 'database.php';
+include_once 'hotel_helpers.php';
 /** @var mysqli $conn */
 if (!isset($conn) || !$conn) { error_log('add_employee: missing DB connection'); http_response_code(500); echo json_encode(['status'=>'error','message'=>'Database connection unavailable']); exit; }
+ensureCoreSchema($conn);
+normalizeExistingRoles($conn);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Accept both JSON and form POST
@@ -32,20 +35,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     $full_name = trim($input['full_name'] ?? '');
     $phone = trim($input['phone'] ?? $input['phone_number'] ?? '');
-    $role = trim($input['role'] ?? 'Employee');
+    $email = trim($input['email'] ?? '');
+    $role = normalizeHotelRole($input['role'] ?? 'waiter');
     $shift_schedule = trim($input['shift_schedule'] ?? '');
     $profile_image_url = trim($input['profile_image_url'] ?? '');
     $salary = isset($input['salary']) && $input['salary'] !== '' ? floatval($input['salary']) : null;
     $password = trim($input['password'] ?? bin2hex(random_bytes(6)));
 
-    if ($full_name === '' || $phone === '') {
-        echo json_encode(['status' => 'error', 'message' => 'Name and phone are required']);
+    if ($full_name === '' || $phone === '' || $email === '') {
+        echo json_encode(['status' => 'error', 'message' => 'Name, phone and email are required']);
         exit;
     }
 
-    $role = strtolower($role) === 'customer' ? 'Employee' : $role;
+    $role = strtolower($role) === 'customer' ? 'waiter' : $role;
+    if (!in_array($role, hotelStaffRoles(), true)) {
+        echo json_encode(['status' => 'error', 'message' => 'Invalid staff role']);
+        exit;
+    }
 
-    $chksql = "SELECT id FROM users WHERE phone_number = ? LIMIT 1";
+    $chksql = "SELECT id FROM users WHERE phone_number = ? OR email = ? LIMIT 1";
     $chkstmt = mysqli_prepare($conn, $chksql);
     if (!$chkstmt) {
         error_log('add_employee check prepare failed: ' . mysqli_error($conn));
@@ -53,12 +61,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo json_encode(['status' => 'error', 'message' => 'Server error']);
         exit;
     }
-    mysqli_stmt_bind_param($chkstmt, "s", $phone);
+    mysqli_stmt_bind_param($chkstmt, "ss", $phone, $email);
     mysqli_stmt_execute($chkstmt);
     $result = mysqli_stmt_get_result($chkstmt);
     if ($result && mysqli_num_rows($result) > 0) {
         mysqli_stmt_close($chkstmt);
-        echo json_encode(['status' => 'error', 'message' => 'Phone number already exists']);
+        echo json_encode(['status' => 'error', 'message' => 'Phone number or email already exists']);
         exit;
     }
     mysqli_stmt_close($chkstmt);
@@ -66,11 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password_hash = password_hash($password, PASSWORD_BCRYPT);
 
     if (!is_null($salary)) {
-        $colCheck = mysqli_query($conn, "SHOW COLUMNS FROM users LIKE 'salary'");
-        if ($colCheck && mysqli_num_rows($colCheck) === 0) {
-            mysqli_query($conn, "ALTER TABLE users ADD COLUMN salary DECIMAL(10,2) DEFAULT 0");
-        }
-        $sql = "INSERT INTO users (full_name, phone_number, password, role, profile_image_url, shift_schedule, salary) VALUES (?, ?, ?, ?, ?, ?, ?)";
+        $sql = "INSERT INTO users (full_name, phone_number, email, password, role, profile_image_url, shift_schedule, salary) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         $stmt = mysqli_prepare($conn, $sql);
         if (!$stmt) {
             error_log('add_employee prepare error: ' . mysqli_error($conn));
@@ -78,9 +82,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo json_encode(['status' => 'error', 'message' => 'Server error']);
             exit;
         }
-        mysqli_stmt_bind_param($stmt, "ssssssd", $full_name, $phone, $password_hash, $role, $profile_image_url, $shift_schedule, $salary);
+        mysqli_stmt_bind_param($stmt, "sssssssd", $full_name, $phone, $email, $password_hash, $role, $profile_image_url, $shift_schedule, $salary);
     } else {
-        $sql = "INSERT INTO users (full_name, phone_number, password, role, profile_image_url, shift_schedule) VALUES (?, ?, ?, ?, ?, ?)";
+        $sql = "INSERT INTO users (full_name, phone_number, email, password, role, profile_image_url, shift_schedule) VALUES (?, ?, ?, ?, ?, ?, ?)";
         $stmt = mysqli_prepare($conn, $sql);
         if (!$stmt) {
             error_log('add_employee prepare error: ' . mysqli_error($conn));
@@ -88,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo json_encode(['status' => 'error', 'message' => 'Server error']);
             exit;
         }
-        mysqli_stmt_bind_param($stmt, "ssssss", $full_name, $phone, $password_hash, $role, $profile_image_url, $shift_schedule);
+        mysqli_stmt_bind_param($stmt, "sssssss", $full_name, $phone, $email, $password_hash, $role, $profile_image_url, $shift_schedule);
     }
 
     if (mysqli_stmt_execute($stmt)) {
@@ -103,4 +107,3 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 mysqli_close($conn);
 ?>
-

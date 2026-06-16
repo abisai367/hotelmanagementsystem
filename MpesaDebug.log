@@ -1,11 +1,37 @@
-[2026-06-05 12:30:31] TOKEN_RESPONSE CODE=200 BODY={
-            "access_token": "3SXixQHUJGeJDffOWmni6s0Wsunj",
+[2026-06-12 17:50:40] TOKEN_RESPONSE CODE=200 BODY={
+            "access_token": "FdCWwTROZslsteiuORttAm3jPlUF",
             "expires_in": "3599"
         }
         
-[2026-06-05 12:30:33] STK_REQUEST URL=https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest PAYLOAD={"BusinessShortCode":"174379","Password":"MTc0Mzc5YmZiMjc5ZjlhYTliZGJjZjE1OGU5N2RkNzFhNDY3Y2QyZTBjODkzMDU5YjEwZjc4ZTZiNzJhZGExZWQyYzkxOTIwMjYwNjA1MTIzMDMx","Timestamp":"20260605123031","TransactionType":"CustomerPayBillOnline","Amount":70,"PartyA":"254790560109","PartyB":"174379","PhoneNumber":"254790560109","CallBackURL":"https:\/\/merry-determination-production.up.railway.app\/callback.php","AccountReference":"Order-1780655431","TransactionDesc":"Hotel Order Payment"} RESPONSE_CODE=200 BODY={
-            "MerchantRequestID":"b73a-483b-a8cf-e649d5c84bd969136",
-            "CheckoutRequestID":"ws_CO_05062026133033874790560109",
+[2026-06-12 17:50:42] STK_REQUEST URL=https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest PAYLOAD={"BusinessShortCode":"174379","Password":"MTc0Mzc5YmZiMjc5ZjlhYTliZGJjZjE1OGU5N2RkNzFhNDY3Y2QyZTBjODkzMDU5YjEwZjc4ZTZiNzJhZGExZWQyYzkxOTIwMjYwNjEyMTc1MDQw","Timestamp":"20260612175040","TransactionType":"CustomerPayBillOnline","Amount":50,"PartyA":"254790560109","PartyB":"174379","PhoneNumber":"254790560109","CallBackURL":"https:\/\/merry-determination-production.up.railway.app\/callback.php","AccountReference":"Order-1781279440","TransactionDesc":"Hotel Order Payment"} RESPONSE_CODE=200 BODY={
+            "MerchantRequestID":"309c-4340-8c53-e2d0ceff4ccd98036",
+            "CheckoutRequestID":"ws_CO_12062026185041611790560109",
+            "ResponseCode": "0",
+            "ResponseDescription":"Success. Request accepted for processing",
+            "CustomerMessage":"Success. Request accepted for processing"
+        }
+        
+[2026-06-12 17:51:35] TOKEN_RESPONSE CODE=200 BODY={
+            "access_token": "cF5AKXB2oEZmfEKfQPOn2kb6A9dY",
+            "expires_in": "3599"
+        }
+        
+[2026-06-12 17:51:37] STK_REQUEST URL=https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest PAYLOAD={"BusinessShortCode":"174379","Password":"MTc0Mzc5YmZiMjc5ZjlhYTliZGJjZjE1OGU5N2RkNzFhNDY3Y2QyZTBjODkzMDU5YjEwZjc4ZTZiNzJhZGExZWQyYzkxOTIwMjYwNjEyMTc1MTM1","Timestamp":"20260612175135","TransactionType":"CustomerPayBillOnline","Amount":50,"PartyA":"254790560109","PartyB":"174379","PhoneNumber":"254790560109","CallBackURL":"https:\/\/merry-determination-production.up.railway.app\/callback.php","AccountReference":"Order-1781279495","TransactionDesc":"Hotel Order Payment"} RESPONSE_CODE=200 BODY={
+            "MerchantRequestID":"309c-4340-8c53-e2d0ceff4ccd98074",
+            "CheckoutRequestID":"ws_CO_12062026185136453790560109",
+            "ResponseCode": "0",
+            "ResponseDescription":"Success. Request accepted for processing",
+            "CustomerMessage":"Success. Request accepted for processing"
+        }
+        
+[2026-06-12 17:51:43] TOKEN_RESPONSE CODE=200 BODY={
+            "access_token": "g0utlHPE7eCaooBRwqXYfGfaECJw",
+            "expires_in": "3599"
+        }
+        
+[2026-06-12 17:51:45] STK_REQUEST URL=https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest PAYLOAD={"BusinessShortCode":"174379","Password":"MTc0Mzc5YmZiMjc5ZjlhYTliZGJjZjE1OGU5N2RkNzFhNDY3Y2QyZTBjODkzMDU5YjEwZjc4ZTZiNzJhZGExZWQyYzkxOTIwMjYwNjEyMTc1MTQz","Timestamp":"20260612175143","TransactionType":"CustomerPayBillOnline","Amount":50,"PartyA":"254790560109","PartyB":"174379","PhoneNumber":"254790560109","CallBackURL":"https:\/\/merry-determination-production.up.railway.app\/callback.php","AccountReference":"Order-1781279503","TransactionDesc":"Hotel Order Payment"} RESPONSE_CODE=200 BODY={
+            "MerchantRequestID":"16bb-43b0-9470-fa7496711cbf44846",
+            "CheckoutRequestID":"ws_CO_12062026185144909790560109",
             "ResponseCode": "0",
             "ResponseDescription":"Success. Request accepted for processing",
             "CustomerMessage":"Success. Request accepted for processing"
